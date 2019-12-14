@@ -1,3 +1,4 @@
+from send_message import .send_message
 import time
 from ctypes import *
 import math
@@ -245,6 +246,8 @@ def capture_video(net, meta):
         cv2.circle(frame,(person_point.x,person_point.y),10,(255,0,0),-1)
         is_sitting_up = sitting_up_detection(detections)
         print(is_sitting_up)
+        if is_sitting_up:
+            send_message()
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
         cv2.imshow('frame', frame)
         cv2.imwrite("image.jpg", gray)
