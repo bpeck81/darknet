@@ -221,6 +221,8 @@ def capture_video(net, meta):
     frame_avg_num = 10
     b = Box(0, 0, 0, 0)
     detections = {}
+    situp_timer = time.time()#starts when situp detected and reset after 10 mins
+    first_time_detected = True
     while(True):
         ret, frame = cap.read()
         if initialize_bed:
@@ -246,8 +248,11 @@ def capture_video(net, meta):
         cv2.circle(frame,(person_point.x,person_point.y),10,(255,0,0),-1)
         is_sitting_up = sitting_up_detection(detections)
         print(is_sitting_up)
-        if is_sitting_up:
+        situp_time_elapsed = time.time() - situp_timer
+        if is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected):
             send_message()
+            situp_timer = time.time()
+            first_time_detected = False
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
         cv2.imshow('frame', frame)
         cv2.imwrite("image.jpg", gray)
