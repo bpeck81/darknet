@@ -53,31 +53,60 @@ class Point:
         self.x = x
         self.y = y
 
+class Obj:
+    def __init__(self):
+        self.detected_obj_history = []
+        self.box = Box(0,0,0,0)
+
+class Person(Obj):
+    def __init__(self):
+        super(Person, self).__init__()
+
+    def __str__(self):
+        return 'Person'
+
+class Bed(Obj):
+    def __init__(self):
+        super(Bed, self).__init__()
+
+    def __str__(self):
+        return 'Bed'
 
 def sitting_up_detection(detections):
+    #[Person, Person, Bed
     #{'person': Box, 'bed':Box}
-    if len(detections) > 2: return False
-    if 'person' not in detections or 'bed' not in detections: return False
-    exit_left, exit_right, exit_top, exit_bottom = False, False, False, False
-    person_pos = detections['person']
-    #bed_pos = detections['manual_bed']
-    bed_pos = detections['bed']
-    delta = 0 # threshold of person bed overlap before detection
-    if person_pos.x - delta < bed_pos.left:
-        exit_left = True
-    elif person_pos.x + delta > bed_pos.right:
-        exit_right = True
-    elif person_pos.y - delta > bed_pos.bottom:
-        exit_bottom = True
-    elif person_pos.y + delta < bed_pos.top:
-        exit_top = True
-    return exit_top or exit_bottom or exit_left or exit_right
+    people = []
+    bed = None
+    person_found = False
+    bed_found = False
+    for d in detections:
+        if 'Person' in str(d): people.append(d); person_found= True
+        if 'Bed' in str(d): bed=d; bed_found = True
+    if not person_found or not bed_found: return False
+    exited = False
+    for person in people:
+        exit_left, exit_right, exit_top, exit_bottom = False, False, False, False
+        person_pos = person.point
+        #bed_pos = detections['manual_bed']
+        bed_pos = bed.box
+        delta = 0 # threshold of person bed overlap before detection
+        if person_pos.x - delta < bed_pos.left:
+            exit_left = True
+        elif person_pos.x + delta > bed_pos.right:
+            exit_right = True
+        elif person_pos.y - delta > bed_pos.bottom:
+            exit_bottom = True
+        elif person_pos.y + delta < bed_pos.top:
+            exit_top = True
+        if exit_top or exit_bottom or exit_left or exit_right:
+            exited = True
+    return exited
 
 def img_select_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDBLCLK:
         bed_point_list.append((x,y))
         cv2.circle(param,(x,y),10,(255,0,0),-1)
-        #print(x,y)
+        print(x,y)
 
 def draw_bed(frame):
     global bed_point_list
@@ -148,71 +177,74 @@ def YOLO():
         except Exception:
             pass
     cap = cv2.VideoCapture(0)
-    #cap = cv2.VideoCapture("test.mp4")
     cap.set(3, 1280)
     cap.set(4, 720)
-    out = cv2.VideoWriter(
-        "output.avi", cv2.VideoWriter_fourcc(*"MJPG"), 10.0,
-        (darknet.network_width(netMain), darknet.network_height(netMain)))
-    #print("Starting the YOLO loop...")
-
     # Create an image we reuse for each detect
     darknet_image = darknet.make_image(darknet.network_width(netMain),
                                     darknet.network_height(netMain),3)
-    initialize_bed = True
     bed_point_list = []
     detected_obj_history = []
-    frame_avg_num = 2
+    frame_avg_num = 10
     b = Box(0, 0, 0, 0)
-    detections = {}
     situp_timer = time.time()  # starts when situp detected and reset after 10 mins
     first_time_detected = True
-    while True:
-        prev_time = time.time()
+    detection_count = 0
+    person_missing_count = 0
+    def get_frame():
         ret, frame_read = cap.read()
-        frame_rgb = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
-        frame_resized = cv2.resize(frame_rgb,
+        #frame_read = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
+        frame_resized = cv2.resize(frame_read,
                                    (darknet.network_width(netMain),
                                     darknet.network_height(netMain)),
                                    interpolation=cv2.INTER_LINEAR)
-
-        if initialize_bed:
-            bed_point_list = draw_bed(frame_resized)
-            initialize_bed = False
-        cv2.rectangle(frame_resized, bed_point_list[0], bed_point_list[1], (255,0,0), 5)
-        bed_box = Box(bed_point_list[0][0], bed_point_list[0][1], bed_point_list[1][0], bed_point_list[1][1])
-        detections['bed']= bed_box
-        darknet.copy_image_from_bytes(darknet_image,frame_resized.tobytes())
-
+        return frame_resized
+    frame = get_frame()
+    bed_point_list = draw_bed(frame)
+    bed = Bed()
+    bed.box = Box(bed_point_list[0][0], bed_point_list[0][1],bed_point_list[1][0],bed_point_list[1][1])
+    person_missing_time = time.time()
+    while True:
+        prev_time = time.time()
+        frame = get_frame()
+        darknet.copy_image_from_bytes(darknet_image,frame.tobytes())
         frame_data = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
-
+        person_found = False
+        people_list= []
         for content in frame_data:
             key = content[0].decode('utf-8')
             if key == 'person':
+                person_found = True
+                person_missing_time = time.time()
                 obj_coords = [int(c) for c in content[2]]
                 new_b = Box(obj_coords[0] - int(obj_coords[2]/2), obj_coords[1] - int(obj_coords[3]/2), obj_coords[0]+int(obj_coords[2]/2), obj_coords[1]+int(obj_coords[3]/2))
-                detected_obj_history.append(new_b)
-                if len(detected_obj_history) > frame_avg_num:
-                    detected_obj_history = detected_obj_history[1:]
-                b = avg_box_pos(detected_obj_history)
-        person_point = Point(int((b.right +b.left)/2), int((b.top+b.bottom)/2))
-        detections['person'] = person_point
-      #  cv2.rectangle(frame, (b.left, b.top, b.right, b.bottom), (0, 255, 0), 2)
+                p = Person()
+                p.detected_obj_history.append(new_b)
+                if len(p.detected_obj_history) > frame_avg_num:
+                    p.detected_obj_history = p.detected_obj_history[1:]
+                p.box = avg_box_pos(p.detected_obj_history)
+                p.point = Point(int((p.box.right + p.box.left) / 2), int((p.box.top + p.box.bottom) / 2))
+                people_list.append(p)
+
+        detections = []
+        detections.extend(people_list)
+        detections.append(bed)
         is_sitting_up = sitting_up_detection(detections)
-        #print(is_sitting_up)
         situp_time_elapsed = time.time() - situp_timer
-        if is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected):
-            send_message()
+        is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected)
+        is_missing_detection = (time.time() - person_missing_time > 10) and not first_time_detected
+        if is_missing_detection or is_sitting_up_detection:
+            detection_count += 1
+            cv2.imwrite('python/detection_images/{}.png'.format(detection_count), frame)
+            send_message("+15712513711")
             situp_timer = time.time()
             first_time_detected = False
-    #    image = cvDrawBoxes(detections, frame_resized)
-        image = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-        cv2.circle(image,(person_point.x,person_point.y),10,(255,0,0),-1)
+        for person in people_list:
+            cv2.circle(frame,(person.point.x,person.point.y),10,(255,0,0),-1)
+        cv2.rectangle(frame, (bed.box.left, bed.box.top), (bed.box.right, bed.box.bottom), (0, 255, 0), 2)
         #print(1/(time.time()-prev_time))
-        cv2.imshow('Demo', image)
+        cv2.imshow('Demo', frame)
         cv2.waitKey(3)
     cap.release()
-    out.release()
 
 if __name__ == "__main__":
     YOLO()
