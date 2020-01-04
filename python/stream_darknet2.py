@@ -77,7 +77,7 @@ def img_select_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDBLCLK:
         bed_point_list.append((x,y))
         cv2.circle(param,(x,y),10,(255,0,0),-1)
-        print(x,y)
+        #print(x,y)
 
 def draw_bed(frame):
     global bed_point_list
@@ -154,7 +154,7 @@ def YOLO():
     out = cv2.VideoWriter(
         "output.avi", cv2.VideoWriter_fourcc(*"MJPG"), 10.0,
         (darknet.network_width(netMain), darknet.network_height(netMain)))
-    print("Starting the YOLO loop...")
+    #print("Starting the YOLO loop...")
 
     # Create an image we reuse for each detect
     darknet_image = darknet.make_image(darknet.network_width(netMain),
@@ -162,7 +162,7 @@ def YOLO():
     initialize_bed = True
     bed_point_list = []
     detected_obj_history = []
-    frame_avg_num = 10
+    frame_avg_num = 2
     b = Box(0, 0, 0, 0)
     detections = {}
     situp_timer = time.time()  # starts when situp detected and reset after 10 mins
@@ -176,6 +176,12 @@ def YOLO():
                                     darknet.network_height(netMain)),
                                    interpolation=cv2.INTER_LINEAR)
 
+        if initialize_bed:
+            bed_point_list = draw_bed(frame_resized)
+            initialize_bed = False
+        cv2.rectangle(frame_resized, bed_point_list[0], bed_point_list[1], (255,0,0), 5)
+        bed_box = Box(bed_point_list[0][0], bed_point_list[0][1], bed_point_list[1][0], bed_point_list[1][1])
+        detections['bed']= bed_box
         darknet.copy_image_from_bytes(darknet_image,frame_resized.tobytes())
 
         frame_data = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
@@ -193,16 +199,16 @@ def YOLO():
         detections['person'] = person_point
       #  cv2.rectangle(frame, (b.left, b.top, b.right, b.bottom), (0, 255, 0), 2)
         is_sitting_up = sitting_up_detection(detections)
-        print(is_sitting_up)
+        #print(is_sitting_up)
         situp_time_elapsed = time.time() - situp_timer
         if is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected):
             send_message()
             situp_timer = time.time()
             first_time_detected = False
-        image = cvDrawBoxes(detections, frame_resized)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #    image = cvDrawBoxes(detections, frame_resized)
+        image = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
         cv2.circle(image,(person_point.x,person_point.y),10,(255,0,0),-1)
-        print(1/(time.time()-prev_time))
+        #print(1/(time.time()-prev_time))
         cv2.imshow('Demo', image)
         cv2.waitKey(3)
     cap.release()
