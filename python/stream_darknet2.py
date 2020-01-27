@@ -43,11 +43,37 @@ altNames = None
 important_objs = ['person']
 
 class Box:
-    def __init__(self, x1,y1,x2,y2 ):
-        self.bottom = y2
-        self.top = y1
-        self.left = x1
-        self.right = x2
+    def __init__(self, p1,p2):
+        self.bottom = p1.y
+        self.top = p1.y
+        self.left = p1.x
+        self.right = p2.x
+
+
+class Polygon:
+    def __init__(self, top_left,bottom_left,top_right,bottom_right):
+        self.top_left = top_left
+        self.bottom_left = bottom_left
+        self.top_right = top_right
+        self.bottom_right = bottom_right
+        self.left_slope, self.left_intercept = self._calc_slope(bottom_left, top_left)
+        self.right_slope, self.right_intercept = self._calc_slope(bottom_right, top_right)
+    def _calc_slope(self,p2, p1):
+        try:
+            slope =(p2.y - p1.y) / float(p2.x - p1.x)
+            intercept = p1.y-(slope*p1.x)
+            return slope, intercept
+        except:
+            return -1,-1
+
+    def get_right_x(self,p):
+        right_x = (float(p.y- self.right_intercept)/self.right_slope)
+        return right_x
+    def get_left_x(self,p):
+        left_x = (float(p.y-self.left_intercept)/self.left_slope)
+        return left_x
+
+
 class Point:
     def __init__(self, x,y):
         self.x = x
@@ -56,7 +82,8 @@ class Point:
 class Obj:
     def __init__(self):
         self.detected_obj_history = []
-        self.box = Box(0,0,0,0)
+        self.box = Box(Point(0,0),Point(0,0))
+        self.polygon = Polygon(Point(0,0),Point(0,0), Point(0,0), Point(0,0))
 
 class Person(Obj):
     def __init__(self):
@@ -101,10 +128,37 @@ def sitting_up_detection(detections):
         if exit_top or exit_bottom or exit_left or exit_right:
             exited = True
     return exited
+def left_right_exit_detection(detections):
+    #[Person, Person, Bed
+    #{'person': Box, 'bed':Box}
+    people = []
+    bed = None
+    person_found = False
+    bed_found = False
+    for d in detections:
+        if 'Person' in str(d): people.append(d); person_found= True
+        if 'Bed' in str(d): bed=d; bed_found = True
+    if not person_found or not bed_found: return False
+    exited = False
+    for person in people:
+        exit_left, exit_right = False, False 
+        person_pos = person.point
+        bed_pos = bed.polygon
+        
+        polygon_right_x, polygon_left_x = bed_pos.get_right_x(person_pos), bed_pos.get_left_x(person_pos)
+        delta = 0 # threshold of person bed overlap before detection
+        if person_pos.x - delta < polygon_left_x:
+            exit_left = True
+        elif person_pos.x + delta > polygon_right_x:
+            exit_right = True
+        if exit_left or exit_right:
+            exited = True
+    return exited
+
 
 def img_select_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDBLCLK:
-        bed_point_list.append((x,y))
+        bed_point_list.append(Point(x,y))
         cv2.circle(param,(x,y),10,(255,0,0),-1)
         print(x,y)
 
@@ -122,7 +176,7 @@ def draw_bed(frame):
 
 
 def avg_box_pos(detected_obj_history):
-    avg_box = Box(0,0,0,0)
+    avg_box = Box(Point(0,0), Point(0,0))
     for b in detected_obj_history:
         avg_box.left += b.left/len(detected_obj_history)
         avg_box.right += b.right/len(detected_obj_history)
@@ -137,7 +191,6 @@ def avg_box_pos(detected_obj_history):
 
 
 def YOLO():
-
     global metaMain, netMain, altNames
     configPath = "./cfg/yolov3.cfg"
     weightPath = "./yolov3.weights"
@@ -186,7 +239,7 @@ def YOLO():
     bed_point_list = []
     detected_obj_history = []
     frame_avg_num = 10
-    b = Box(0, 0, 0, 0)
+    b = Box(Point(0,0), Point(0,0))
     situp_timer = time.time()  # starts when situp detected and reset after 10 mins
     first_time_detected = True
     detection_count = 0
@@ -202,7 +255,12 @@ def YOLO():
     frame = get_frame()
     bed_point_list = draw_bed(frame)
     bed = Bed()
-    bed.box = Box(bed_point_list[0][0], bed_point_list[0][1],bed_point_list[1][0],bed_point_list[1][1])
+    try:
+        # depends on whether user generates polygon or box for exit
+        bed.box = Box(bed_point_list[0], bed_point_list[1])
+        bed.polygon = Polygon(bed_point_list[0],bed_point_list[1],bed_point_list[2],bed_point_list[3])
+    except Exception as e:
+        print(e)
     person_missing_time = time.time()
     while True:
         prev_time = time.time()
@@ -219,7 +277,7 @@ def YOLO():
                 person_found = True
                 person_missing_time = time.time()
                 obj_coords = [int(c) for c in content[2]]
-                new_b = Box(obj_coords[0] - int(obj_coords[2]/2), obj_coords[1] - int(obj_coords[3]/2), obj_coords[0]+int(obj_coords[2]/2), obj_coords[1]+int(obj_coords[3]/2))
+                new_b = Box(Point(obj_coords[0] - int(obj_coords[2]/2), obj_coords[1] - int(obj_coords[3]/2)), Point(obj_coords[0]+int(obj_coords[2]/2), obj_coords[1]+int(obj_coords[3]/2)))
                 p = Person()
                 p.detected_obj_history.append(new_b)
                 if len(p.detected_obj_history) > frame_avg_num:
@@ -231,7 +289,7 @@ def YOLO():
         detections = []
         detections.extend(people_list)
         detections.append(bed)
-        is_sitting_up = sitting_up_detection(detections)
+        is_sitting_up = left_right_exit_detection(detections)
         situp_time_elapsed = time.time() - situp_timer
         is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected)
         is_missing_detection = (time.time() - person_missing_time > 5)   
@@ -239,16 +297,20 @@ def YOLO():
         #print('sitting ', is_sitting_up)
         print(is_missing_detection or is_sitting_up)
         color = (0,255,0)
-        if is_missing_detection or is_sitting_up_detection:
+        if is_missing_detection or is_sitting_up:
             color = (0,0,255)
             detection_count += 1
             cv2.imwrite('python/detection_images/{}.png'.format(detection_count), frame)
-            send_message("+15712513711")
+            #send_message("+15712513711")
             situp_timer = time.time()
             first_time_detected = False
         for person in people_list:
             cv2.circle(frame,(person.point.x,person.point.y),10,color,-1)
-        cv2.rectangle(frame, (bed.box.left, bed.box.top), (bed.box.right, bed.box.bottom), (0, 255, 0), 2)
+        cv2.circle(frame, (bed.polygon.top_left.x, bed.polygon.top_left.y), 10, color, -1)
+        cv2.circle(frame, (bed.polygon.top_right.x, bed.polygon.top_right.y), 10, color, -1)
+        cv2.circle(frame, (bed.polygon.bottom_left.x, bed.polygon.bottom_left.y), 10, color, -1)
+        cv2.circle(frame, (bed.polygon.bottom_right.x, bed.polygon.bottom_right.y), 10, color, -1)
+        #cv2.rectangle(frame, (bed.box.left, bed.box.top), (bed.box.right, bed.box.bottom), (0, 255, 0), 2)
         #print(1/(time.time()-prev_time))
         cv2.imshow('Demo', frame)
         cv2.waitKey(3)
