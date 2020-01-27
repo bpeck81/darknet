@@ -247,6 +247,10 @@ def YOLO():
     def get_frame():
         ret, frame_read = cap.read()
         #frame_read = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
+        w = int(frame_read.shape[0]/2)
+        h = int(frame_read.shape[1]/2)
+        size = int(416/2)
+        frame_read = frame_read[w-size:w+size,h-size:h+size]
         frame_resized = cv2.resize(frame_read,
                                    (darknet.network_width(netMain),
                                     darknet.network_height(netMain)),
