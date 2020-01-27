@@ -1,4 +1,4 @@
-from send_message import send_message
+#from send_message import send_message
 from ctypes import *
 import math
 import random
@@ -141,6 +141,7 @@ def YOLO():
     global metaMain, netMain, altNames
     configPath = "./cfg/yolov3.cfg"
     weightPath = "./yolov3.weights"
+    #weightPath = "./yolov3_50000.weights"
     metaPath = "./cfg/coco.data"
     if not os.path.exists(configPath):
         raise ValueError("Invalid config path `" +
@@ -206,6 +207,8 @@ def YOLO():
     while True:
         prev_time = time.time()
         frame = get_frame()
+        #frame[:,:,0]=frame[:,:,2]
+        #frame[:,:,1]=frame[:,:,2]
         darknet.copy_image_from_bytes(darknet_image,frame.tobytes())
         frame_data = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
         person_found = False
@@ -231,15 +234,20 @@ def YOLO():
         is_sitting_up = sitting_up_detection(detections)
         situp_time_elapsed = time.time() - situp_timer
         is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected)
-        is_missing_detection = (time.time() - person_missing_time > 10) and not first_time_detected
+        is_missing_detection = (time.time() - person_missing_time > 5)   
+        #print('missing ', is_missing_detection)
+        #print('sitting ', is_sitting_up)
+        print(is_missing_detection or is_sitting_up)
+        color = (0,255,0)
         if is_missing_detection or is_sitting_up_detection:
+            color = (0,0,255)
             detection_count += 1
             cv2.imwrite('python/detection_images/{}.png'.format(detection_count), frame)
             send_message("+15712513711")
             situp_timer = time.time()
             first_time_detected = False
         for person in people_list:
-            cv2.circle(frame,(person.point.x,person.point.y),10,(255,0,0),-1)
+            cv2.circle(frame,(person.point.x,person.point.y),10,color,-1)
         cv2.rectangle(frame, (bed.box.left, bed.box.top), (bed.box.right, bed.box.bottom), (0, 255, 0), 2)
         #print(1/(time.time()-prev_time))
         cv2.imshow('Demo', frame)
