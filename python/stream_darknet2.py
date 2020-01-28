@@ -1,4 +1,4 @@
-#from send_message import send_message
+from send_message import send_message
 from ctypes import *
 import math
 import random
@@ -297,15 +297,13 @@ def YOLO():
         situp_time_elapsed = time.time() - situp_timer
         is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected)
         is_missing_detection = (time.time() - person_missing_time > 5)   
-        #print('missing ', is_missing_detection)
-        #print('sitting ', is_sitting_up)
-        #print(is_sitting_up)
         color = (0,255,0)
-        if is_sitting_up:
+        if is_sitting_up_detection:
+            print('detected')
             color = (0,0,255)
             detection_count += 1
-            cv2.imwrite('python/detection_images/{}.png'.format(detection_count), frame)
-            #send_message("+15712513711")
+            cv2.imwrite('python/detection_images/save_image.png'.format(detection_count), frame)
+            send_message("sit up", "+15712513711")
             situp_timer = time.time()
             first_time_detected = False
         for person in people_list:
