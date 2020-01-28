@@ -249,7 +249,7 @@ def YOLO():
         #frame_read = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
         w = int(frame_read.shape[0]/2)
         h = int(frame_read.shape[1]/2)
-        size = int(416/2)
+        size = int(720/2)
         frame_read = frame_read[w-size:w+size,h-size:h+size]
         frame_resized = cv2.resize(frame_read,
                                    (darknet.network_width(netMain),
@@ -299,9 +299,9 @@ def YOLO():
         is_missing_detection = (time.time() - person_missing_time > 5)   
         #print('missing ', is_missing_detection)
         #print('sitting ', is_sitting_up)
-        print(is_missing_detection or is_sitting_up)
+        #print(is_sitting_up)
         color = (0,255,0)
-        if is_missing_detection or is_sitting_up:
+        if is_sitting_up:
             color = (0,0,255)
             detection_count += 1
             cv2.imwrite('python/detection_images/{}.png'.format(detection_count), frame)
