@@ -1,3 +1,4 @@
+import boto3
 from send_message import send_message
 from ctypes import *
 import math
@@ -172,6 +173,9 @@ def draw_bed(frame):
         k = cv2.waitKey(20) & 0xFF
         if k == 27:
             break
+    with open('python/bed_points.csv', 'w+') as f:
+        for p in bed_point_list:
+            f.write(str(p.x)+','+ str(p.y)+ '\n')
     return bed_point_list
 
 
@@ -189,6 +193,11 @@ def avg_box_pos(detected_obj_history):
     avg_box.top = int(avg_box.top)
     return avg_box
 
+def upload_video_to_s3(file_name, file_path):
+    print('uploading client video to cloud')
+    client = boto3.client('s3', region_name='us-west-2')
+    client.upload_file(file_path, 'mercury-client-private', file_name)
+    print('upload succeeded')
 
 def YOLO():
     global metaMain, netMain, altNames
@@ -256,8 +265,15 @@ def YOLO():
                                     darknet.network_height(netMain)),
                                    interpolation=cv2.INTER_LINEAR)
         return frame_resized
-    frame = get_frame()
-    bed_point_list = draw_bed(frame)
+    try:
+        bed_point_list = []
+        with open('python/bed_points.csv', 'r') as f:
+            for line in f:
+                l = line.split(',')
+                bed_point_list.append(Point(int(l[0]),int(l[1])))
+    except:
+        frame = get_frame()
+        bed_point_list = draw_bed(frame)
     bed = Bed()
     try:
         # depends on whether user generates polygon or box for exit
@@ -266,11 +282,15 @@ def YOLO():
     except Exception as e:
         print(e)
     person_missing_time = time.time()
+    video_writer = None
+    user_name = 'jilee'
+    client_video_path = ''
+    client_video_name = ''
+    detection_reset_duration = 60* 10
+    client_video_sent=False
     while True:
         prev_time = time.time()
         frame = get_frame()
-        #frame[:,:,0]=frame[:,:,2]
-        #frame[:,:,1]=frame[:,:,2]
         darknet.copy_image_from_bytes(darknet_image,frame.tobytes())
         frame_data = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
         person_found = False
@@ -295,12 +315,26 @@ def YOLO():
         detections.append(bed)
         is_sitting_up = left_right_exit_detection(detections)
         situp_time_elapsed = time.time() - situp_timer
-        is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >= 600 or first_time_detected)
+        is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >  detection_reset_duration or first_time_detected)
         is_missing_detection = (time.time() - person_missing_time > 5)   
         color = (0,255,0)
-        if is_sitting_up_detection:
+        print(situp_time_elapsed)
+        if situp_time_elapsed <= detection_reset_duration and not first_time_detected:
+            video_writer.write(frame)
+        if situp_time_elapsed > detection_reset_duration and not first_time_detected and not client_video_sent:
+            if video_writer:
+                video_writer.release()
+                upload_video_to_s3(client_video_name, client_video_path)
+                client_video_sent = True
+        if  is_sitting_up_detection:
             print('detected')
-            color = (0,0,255)
+            if video_writer:
+                video_writer.release()
+            client_video_name = 'user{}_{}.avi'.format(user_name, detection_count)
+            client_video_path = 'python/detection_images/'+client_video_name
+            video_writer = cv2.VideoWriter(client_video_path,cv2.VideoWriter_fourcc(*'MJPG'),2.0,(416,416))
+            client_video_sent = False
+            color = (0,0,255)            
             detection_count += 1
             cv2.imwrite('python/detection_images/save_image.png'.format(detection_count), frame)
             send_message("sit up", "+15712513711")
