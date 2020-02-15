@@ -258,7 +258,7 @@ def YOLO():
         #frame_read = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
         w = int(frame_read.shape[0]/2)
         h = int(frame_read.shape[1]/2)
-        size = int(720/2)
+        size = int(600/2)
         frame_read = frame_read[w-size:w+size,h-size:h+size]
         frame_resized = cv2.resize(frame_read,
                                    (darknet.network_width(netMain),
@@ -286,7 +286,7 @@ def YOLO():
     user_name = 'jilee'
     client_video_path = ''
     client_video_name = ''
-    detection_reset_duration = 60* 10
+    detection_reset_duration = 30 *3
     client_video_sent=False
     while True:
         prev_time = time.time()
@@ -318,14 +318,16 @@ def YOLO():
         is_sitting_up_detection = is_sitting_up and (situp_time_elapsed >  detection_reset_duration or first_time_detected)
         is_missing_detection = (time.time() - person_missing_time > 5)   
         color = (0,255,0)
-        print(situp_time_elapsed)
+        #print(situp_time_elapsed)
         if situp_time_elapsed <= detection_reset_duration and not first_time_detected:
             video_writer.write(frame)
         if situp_time_elapsed > detection_reset_duration and not first_time_detected and not client_video_sent:
             if video_writer:
                 video_writer.release()
-                upload_video_to_s3(client_video_name, client_video_path)
+                #upload_video_to_s3(client_video_name, client_video_path)
                 client_video_sent = True
+        if is_sitting_up:
+            color = (0,0,255)            
         if  is_sitting_up_detection:
             print('detected')
             if video_writer:
@@ -342,10 +344,10 @@ def YOLO():
             first_time_detected = False
         for person in people_list:
             cv2.circle(frame,(person.point.x,person.point.y),10,color,-1)
-        cv2.circle(frame, (bed.polygon.top_left.x, bed.polygon.top_left.y), 10, color, -1)
-        cv2.circle(frame, (bed.polygon.top_right.x, bed.polygon.top_right.y), 10, color, -1)
-        cv2.circle(frame, (bed.polygon.bottom_left.x, bed.polygon.bottom_left.y), 10, color, -1)
-        cv2.circle(frame, (bed.polygon.bottom_right.x, bed.polygon.bottom_right.y), 10, color, -1)
+        #cv2.circle(frame, (bed.polygon.top_left.x, bed.polygon.top_left.y), 10, color, -1)
+        #cv2.circle(frame, (bed.polygon.top_right.x, bed.polygon.top_right.y), 10, color, -1)
+        #cv2.circle(frame, (bed.polygon.bottom_left.x, bed.polygon.bottom_left.y), 10, color, -1)
+        #cv2.circle(frame, (bed.polygon.bottom_right.x, bed.polygon.bottom_right.y), 10, color, -1)
         #cv2.rectangle(frame, (bed.box.left, bed.box.top), (bed.box.right, bed.box.bottom), (0, 255, 0), 2)
         #print(1/(time.time()-prev_time))
         cv2.imshow('Demo', frame)
