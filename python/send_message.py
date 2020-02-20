@@ -8,8 +8,7 @@ def send_message(action='sit up', to='+18585006186'):
     print('uploaded')
     image_path = 'https://clientimagedata.s3-us-west-2.amazonaws.com/save_image.png'
     #image_path = 'https://c1.staticflickr.com/3/2899/14341091933_1e92e62d12_b.jpg'
-    account_sid = 'AC025dbe29a3dc777a9433d15edbfbb9ce'
-    auth_token = '6f31f4a09df1eff674c7a78a2c5e89c8'
+
     client = Client(account_sid, auth_token)
 
     payload = 'Ricky has sat up out of bed. Please provide assistance.'
